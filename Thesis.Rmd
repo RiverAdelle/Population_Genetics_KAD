@@ -1,0 +1,383 @@
+---
+title: "Thesis"
+author: "River Watson"
+date: "10/26/2021"
+output: html_document
+editor_options: 
+---
+
+```{r libraries and things, include=FALSE}
+library(dplyr)
+library(knitr)
+library(tidyverse)
+library(genetics)
+library(adegenet)
+library(hierfstat)
+library(ade4)
+library(pegas)
+library(ape)
+library(hierfstat)
+library(PopGenReport)
+library(genepop)
+#library(diveRsity)
+library(nnet)
+#library(HWxtest) #not available in newer R versions
+library(mmod)
+library(writexl)
+library(sf)
+```
+
+```{r data read in}
+#K=8 genetic clusters from 14 sites
+Data <- read.genepop("KAD_Watson_8pop.gen")
+#12 sites, no Little DOuble sites
+Data <- read.genepop("KAD_Watson_GenepopFile_12popNo519.gen")
+#With Little Double Sites
+Data <- read.genepop("KAD_Watson_GenepopFile_14popNo519.gen")
+#All 19 KAD populations
+Data <- read.genepop("19POPS.gen")
+
+Datahier <- genind2hierfstat(Data)
+```
+
+```{r hierfstat}
+#http://www2.uaem.mx/r-mirror/web/packages/hierfstat/hierfstat.pdf
+
+Datahier <- genind2hierfstat(Data)
+
+#Estimates individual counts, allelic frequencies, observed heterozygosities and genetic diversities per locus and population, mean observed heterozygosities, mean gene diversities within population Hs, Gene diversities overall Ht and corrected Htp, and Dst, Dstp, Fst and Fstp as well as Fis following Nei (1987) per locus and overall loci
+hierfstatbasicstats<-basic.stats(Datahier, diploid = TRUE, digits = 4)
+boxplot(hierfstatbasicstats$perloc[,1:3]) 
+hierfstatbasicstats
+
+#Computes Weir and Cockrham estimates of Fstatistics
+#Fst comparing pop to Total
+#Fit comparing Ind to Total
+#Fis comparing Ind to pop
+wc(Datahier,diploid=TRUE,pol=0.0)
+
+#pairwise fst wc
+
+wcpw <-pairwise.WCfst(Datahier, diploid = TRUE)
+wcpw <- as.data.frame(wcpw)
+
+
+neipw <-pairwise.neifst(Datahier)
+neipw <-as.data.frame(neipw)
+
+#write_xlsx(wcpw,"wcpairwisefst8pop_rearranged.xlsx")
+#write_xlsx(neipw,"neipairwisefst12pop_final.xlsx")
+
+
+#test significance of pairwise fst value, sig different than zero
+boot.ppfst(dat=Datahier,nboot=1000,quant=c(0.025,0.975),diploid=TRUE)
+
+
+#sig of Fis
+boot.ppfis(dat=Datahier,nboot=100,quant=c(0.025,0.975),diploid=TRUE)
+
+#make STRUCTURE file
+write.struct(Datahier,ilab=TRUE,pop=TRUE,MARKERNAMES=TRUE,MISSING=-9,fname="KAD_Watson_example.str")
+
+allelic.richness(Data,diploid=TRUE)
+?allelic.richness
+```
+
+
+```{r popgenreport}
+#https://cran.r-project.org/web/packages/PopGenReport/PopGenReport.pdf
+
+#Will make a results folder
+popgenreport(Data, mk.complete = TRUE, mk.Rcode = TRUE,
+            mk.pdf = TRUE, path.pgr = getwd())
+#fast fst, no NAs allowed
+pairwise.fstb(Datanona)
+```
+
+
+```{r genepop}
+#https://cran.r-project.org/web/packages/genepop/genepop.pdf
+
+#Result file will be in the "outputs" folder
+
+basic_info("KAD_Watson_GenepopFile_12popNo519.txt", outputFile="12pop_Basin_info2023.txt", verbose = interactive())
+
+
+#Fis
+genedivFis("KAD_Watson_GenepopFile_12popno519.txt", sizes = FALSE, 
+           outputFile = "12popFis.txt",
+           dataType = "Diploid", verbose = interactive())
+
+#null alleles
+nulls("KAD_Watson_GenepopFile_12popno519.txt", outputFile = "12popDatanulls.txt",
+      nullAlleleMethod = "", CIcoverage = 0.95, verbose = interactive())
+
+#Calculation of LD
+test_LD("KKAD_Watson_GenepopFile_NoLD.gen", outputFile = "ld.txt", 
+        settingsFile = "", dememorization = 1000, 
+        batches = 100, iterations = 1000, 
+        verbose = interactive())
+
+write_LD_tables("KAD_Watson_GenepopFile_IDsNoPopLabels.gen", outputFile = "Data.ld.txt.TAB", 
+                verbose = interactive())
+
+#HWE
+test_HW(inputFile = "KAD_Watson_8pop.txt", which = "Proba",outputFile = "8popHWE2.txt", enumeration = FALSE, dememorization = 10000, batches = 500, iterations = 2000, verbose = interactive())
+
+```
+
+
+```{r diveRsity}
+library(diveRsity)
+#https://cran.r-project.org/web/packages/diveRsity/diveRsity.pdf
+
+#divBasics calculates HWE through a Fischer's Exact Test
+#A function to calculate basic population parameters such as allelic richness, observed heterozygosity, as well as expected heterozygosity. Assumes loci are not linked
+
+divBasic(infile="KAD_Watson_GenepopFile_12popNo519.txt", outfile="divBasic12pop.txt", gp=2, bootstraps=10000, HWEexact=TRUE, mcRep=10000)
+
+#basicStats calculates HWE with MC and a pseudo-exact test
+basicStats(infile = "KAD_Watson_8pop.gen", outfile = "basicstat8pop", fis_ci = TRUE, ar_ci = FALSE, fis_boots = 20000, ar_boots = NULL, mc_reps = 20000, rarefaction = TRUE, ar_alpha = 0.05, fis_alpha = 0.05)
+?basicStats
+#This produces both Fst for loci and pairwise Fst
+
+#diffCalc(infile = "T1NNA5loci.gen", outfile = NULL, fst = TRUE, 
+#         pairwise = TRUE, bs_locus = FALSE, bs_pairwise = TRUE, 
+#         boots = 1000, ci_type = "individuals", 
+#         alpha = 0.05, para = FALSE)
+
+```
+
+```{r DAPC K-means clustering with cross-validation}
+#http://adegenet.r-forge.r-project.org/files/tutorial-dapc.pdf
+#https://rpubs.com/cfb0001/777801
+library(adegenet)
+Data <- read.genepop("KAD_Watson_GenepopFile_14popNo519.gen")
+Data<-read.genepop("KAD_Watson_GenepopFile_13popNoUpperBear.gen")
+#define pops
+pop(Data) <- rep(c("Laurel","LFBC","UBS","LBS", "UBD","LBD", "ULD", "LLD", "Gilberts", "Elisha", "UBowen", "LBowen", "Spring", "UBear"), c(20, 20, 16,6,19,23,2,1,19,15,22,20,20,17))
+pop(Data)
+
+
+grp <- find.clusters(Data, max.n.clust = 14)
+#retain 200 PCs
+#lowest BIC, so retain 9
+grp$Kstat
+#K=9,8
+grp$grp
+
+#Now conduct DAPC, first with n.pca and n.da set to null to find n.da
+dapc1 <- dapc(Data, grp$grp, n.pca = NULL, n.da = NULL)
+#Retain 40 PCs because the variance starts to level off after that
+#retain 5 DAs, You want the tallest bars, shorter ones are basically just noise, for small numbers of clusters you can keep all of them
+
+#find optimal number of PCS
+temp <- optim.a.score(dapc1)
+#6
+# Cross validation method to find # of PCs
+xval = xvalDapc.genind(Data, Data$pop, n.pca.max=14, training.set=0.9,
+result="groupMean", center=TRUE, scale=FALSE,
+n.rep=100, n.pca=NULL, parallel="snow", ncpus=4)
+
+xval$`Number of PCs Achieving Highest Mean Success`
+#8
+xval$`Number of PCs Achieving Lowest MSE`
+#8
+xval$`Root Mean Squared Error by Number of PCs of PCA` # lower score = better, in this case, 8
+
+#Run DAPC again with these new numbers
+dapc1 <- dapc(Data, grp$grp)
+#8PCs, 5 DAs, from cross-validation
+scatter(dapc1)
+compoplot(dapc1, lab="",ncol=1)
+
+#to get indv pop labels on top of scatter
+df <- data.frame(x = dapc1$ind.coord[,1], y = dapc1$ind.coord[,2])
+noms <- paste(Data$pop)
+s.label(dfxy = df, xax=1, yax=2, label=noms,
+        clabel=0.5, # change the size of the labels
+        boxes=FALSE, # if points are spaced wide enough, can use TRUE to add boxes around the labels
+        grid=FALSE, addaxes=FALSE) # do not draw lines or axes in addition to the labels
+compoplot(dapc1, lab="", posi=list(x=12,y=-.01), cleg=.7)
+
+
+library(readxl)    # CRAN v1.3.1
+library(janitor)   # CRAN v2.1.0
+library(dplyr)     # CRAN v1.0.7
+library(tidyr)     # CRAN v1.1.3
+library(adegenet)  # CRAN v2.1.4
+library(ggplot2)   # CRAN v3.3.5
+library(forcats)   # CRAN v0.5.1
+library(stringr)   # CRAN v1.4.0
+library(ggh4x)     # [github::teunbrand/ggh4x] v0.2.0.9000
+library(paletteer) # CRAN v1.4.0
+library(extrafont) # CRAN v0.17
+postprobs <- as.data.frame(round(dapc1$posterior, 4))
+# put probabilities in a tibble with IDS and labels for sites
+clusters <- tibble::rownames_to_column(postprobs, var = "ind") %>%
+  mutate(site = Datahier$pop)
+
+# melt into long format
+long <- clusters %>% pivot_longer(2:9, names_to = "cluster", values_to = "prob")
+
+# manual relevel of the sampling sites (to avoid alphabetical ordering)
+long$trapfact <- fct_relevel(as.factor(long$site), "Laurel","LFBC","UBC","LBC", "UBD","LBD", "ULD", "LLD", "Gilberts", "Elisha", "UBowen", "LBowen", "Spring", "UBear")
+# column for the municipality abbreviation
+long <- long %>% mutate(loc = str_remove(site, "[0-9]"))
+
+# set up custom facet strips
+facetstrips <- strip_nested(
+  text_x = elem_list_text(size = c(12, 4)),
+  by_layer_x = TRUE, clip = "off"
+)
+ggplot(long, aes(factor(ind), prob, fill = factor(cluster))) +
+  geom_col(color = "gray", size = 0.01) +
+  facet_nested(~ loc + trapfact,
+    switch = "x",
+    nest_line = element_line(size = 1, lineend = "round"),
+    scales = "free", space = "free", strip = facetstrips,
+  ) +
+  theme_minimal(base_family = "Nimbus Sans") +
+  labs(x = "Individuals", y = "membership probability") +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_discrete(expand = expansion(add = 0.5)) +
+  scale_fill_paletteer_d("ghibli::PonyoMedium", guide = "none") +
+  theme(
+    panel.spacing.x = unit(0.18, "lines"),
+    axis.text.x = element_blank(),
+    panel.grid = element_blank()
+  )
+
+table(pop(Data), grp$grp)
+table.value(table(pop(Data), grp$grp), col.lab=paste("inf", 1:14),
+row.lab=paste("ori", 1:14))
+
+```
+
+```{r distance}
+library(riverdist)
+#getting nhd through R https://ryanpeek.org/2017-11-05-mapping-with-sf-part-2/
+#possible tutorial https://ryanpeek.org/2017-11-21-mapping-with-sf-part-3/
+
+#used these three:
+#demo https://github.com/FloodHydrology/riverdist_demo
+#https://github.com/mbtyers/riverdist
+#https://cran.r-project.org/web/packages/riverdist/vignettes/riverdist_vignette.html
+p <- '+proj=longlat +datum=WGS84 +no_defs'
+sitepoints <- read.csv("Sites_noLD.csv") %>% 
+  st_as_sf(coords = c("Long", "Lat"), crs= p )
+SF<- st_read("All_Rasters/SFDissolve.shp")
+#Create a temp folder to write network folder too
+temp_file<-tempdir()
+dir.create(temp_file)
+#reproj to UTMs
+p_new<-"+proj=utm +zone=16 +zone=17 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"
+SF<-st_transform(SF, crs=p_new)
+sitepoints<-st_transform(sitepoints, crs=p_new)
+#prep stream data
+SF <- SF %>% 
+  #remove z information (to make it a 'linear' feature)
+  st_zm() %>% 
+  #Add ID data
+  mutate(
+    uid = seq(1, nrow(.)),
+    type = 'river'
+  )
+#export streams to temp file
+st_write(SF, paste0(temp_file,"\\SF.shp"), delete_dsn = T)
+
+#Create flownet
+flow_net <- line2network(path=temp_file, layer="SF", tolerance = 1)
+
+#save flow network 
+save(flow_net, file = paste0(temp_file, "\\riv.rda"))
+
+#prep sites data
+pnts<-sitepoints %>% 
+  #Define coordinates
+  mutate(
+    x = st_coordinates(.)[,1],
+    y = st_coordinates(.)[,2],
+  ) %>% 
+  #Add site name
+  mutate(site_name = 'Site') %>% 
+  st_drop_geometry()
+
+#Snap points to flow network
+snap<-xy2segvert(x=pnts$x, y=pnts$y, rivers=flow_net)
+
+#Estimate distances 
+#Define river distance between points!
+output<-riverdistancemat(
+  seg = snap$seg, 
+  vert = snap$vert, 
+  rivers = flow_net)
+outputkm <- measurements::conv_unit(output,"m","km")
+outputkm<-as.dist(outputkm)
+#library(MASS)
+#as.data.frame(output)
+#write.csv(output, file = "riverdist.csv")
+```
+
+
+```{r adegenet IBD}
+Datagp <- genind2genpop(Data)
+Dgen <- dist.genpop(Datagp, method = 3)
+outputkm<-as.dist(outputkm)
+logibd <- mantel.randtest(Dgen, log(outputkm))
+logibd
+#> logibd
+#Monte-Carlo test
+#Call: mantel.randtest(m1 = Dgen, m2 = log(outputkm))
+#Observation: 0.6929747 
+#Based on 999 replicates
+#Simulated p-value: 0.001 
+#Alternative hypothesis: greater 
+#    Std.Obs Expectation    Variance 
+#4.968488181 0.001336949 0.019377995
+
+plot(logibd)
+#"The original value of the correlation between the distance matrices is represented by the dot,while histograms represent permuted values (i.e., under the absence of spatial structure).Significant spatial structure would therefore result in the original value being out of the reference distribution"
+#Here IBD IS significant
+
+library(MASS)
+dimnames(Dgen)<-c("1","2","3","4","5","6","7","8","9","10","11","12")
+Dgen<-as.vector(Dgen)
+outputkm<-as.vector(outputkm)
+dens <- kde2d(outputkm,Dgen, n=300)
+myPal <- colorRampPalette(c("white","blue","gold", "orange", "red"))
+#without heatmap
+plot(outputkm, Dgen, pch=20,cex=.5) + abline(lm(Dgen~outputkm)) + title("Isolation by distance plot") 
+#with heatmap
+plot(outputkm, Dgen, pch=20, cex=1,  
+    xlab="Geographic Distance (River km)", ylab="Genetic Distance (Fst)") + image(dens, col=transp(myPal(300), 0.7), add=TRUE) + abline(lm(Dgen ~ outputkm))
+
+#There is clearly an increase of genetic distance with geographic distance. However, the red line, which is a smoothed local mean, indicates that the relationship is not linear.
+
+par(mar=c(4,4,0,0))
+dens <- MASS::kde2d(log(outputkm), Dgen, n=300)
+plot(log(outputkm), Dgen, pch=20, cex=1,  
+    xlab="Geographic Distance (Log10 river km)", ylab="Genetic Distance (Fst)") + image(dens, col=transp(myPal(300), 0.7), add=TRUE)+ abline(lm(Dgen ~ log(outputkm))) 
+
+```
+
+
+```{r getting a colorramp for StreamTree}
+streamtree <- read.csv("StreamTreeOutput.csv")
+
+ggplot(streamtree,aes(Stream_Section,Genetic_Distance,fill=Genetic_Distance))+geom_bar(stat="identity")+scale_fill_gradient(low="yellow",high="purple")
+
+library(ggplot2)
+library(paletteer)
+ggplot(streamtree,aes(Stream_Section,Genetic_Distance,fill=Genetic_Distance))+geom_bar(stat="identity")+ scale_color_gradient2()
+
+bar <-ggplot(streamtree,aes(Stream_Section,Genetic_Distance, fill=Genetic_Distance))+geom_bar(stat="identity")
+bar
+bar + scale_fill_viridis_c(direction=-1)
+bar + paletteer::scale_fill_paletteer_c("viridis::plasma", direction=-1)
+bar + scale_fill_distiller(palette = "RdPu",direction=1)
+```
+
+
+
+
